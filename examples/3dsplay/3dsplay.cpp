@@ -29,11 +29,17 @@
 #ifdef __APPLE__
 #include <GLUT/glut.h>
 #else
-#include <GL/glut.h>
+#include <GL/freeglut.h>
 #endif
 
 #define MOUSE_SCALE .1 /* degrees/pixel movement */
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
 
+bool readOpenCVTexture(char* filePath, unsigned char*& pixels, int& w, int& h);
+
+bool readOpenCVTextureNode(char* filePath, unsigned char*& pixels, int& w, int& h, int index);
 /*
 Previews a <i>3DS</i> file using OpenGL.
 \warning To compile this program you must have OpenGL and glut installed.
@@ -206,6 +212,61 @@ init(void) {
     //glPolygonOffset(1.0, 2);
 }
 
+bool readOpenCVTextureNode(char* filePath, unsigned char*& pixels, int& w, int& h, int index) {
+    cv::Mat imMat(1000, 1000, CV_8UC3);
+    imMat.setTo(0);
+    std::stringstream ss;
+
+    ss << index;
+    //cv::putText(imMat,ss.str(), cv::Point(400, 400),20,
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    double fontScale = 20.0;
+    cv::Scalar color = cv::Scalar(255, 255, 255);
+    int thickness = 24;
+    putText(imMat, ss.str(), cv::Point(50, 700), fontFace, fontScale, color, thickness, cv::LINE_AA);
+    cv::rectangle(imMat, cv::Rect(0, 0, 1000, 1000), cv::Scalar(255), 3);
+    pixels = (unsigned char*)malloc(sizeof(unsigned char) * (imMat.cols * imMat.rows * 4));
+    cv::Vec3b* pixelsPtr = imMat.ptr<cv::Vec3b>(0);
+    w = imMat.cols;
+    h = imMat.rows;
+    /*  cv::imshow("imMat", imMat);
+      cv::waitKey();*/
+      // Fill the pixel data with random RGB values
+    for (int i = 0; i < w * h; ++i) {
+        pixels[i * 4] = pixelsPtr[i][2];
+        pixels[1 + i * 4] = pixelsPtr[i][1];
+        pixels[2 + i * 4] = pixelsPtr[i][0];
+        pixels[3 + i * 4] = 255;
+
+    }
+    return true;
+}
+bool readOpenCVTexture(char* filePath, unsigned char*& pixels, int& w, int& h) {
+
+    // Use a Mersenne Twister engine for better randomness
+
+    cv::Mat imMat = cv::imread(filePath, cv::IMREAD_COLOR);
+    if (imMat.empty()) return false;
+
+    pixels = (unsigned char*)malloc(sizeof(unsigned char) * (imMat.cols * imMat.rows * 4));
+    cv::Vec3b* pixelsPtr = imMat.ptr<cv::Vec3b>(0);
+    w = imMat.cols;
+    h = imMat.rows;
+    /*    cv::imshow("imMat", imMat);
+        cv::waitKey();*/
+        // Fill the pixel data with random RGB values
+    for (int i = 0; i < w * h; ++i) {
+        pixels[i * 4] = pixelsPtr[i][2];
+        pixels[1 + i * 4] = pixelsPtr[i][1];
+        pixels[2 + i * 4] = pixelsPtr[i][0];
+        pixels[3 + i * 4] = 255;
+
+    }
+    return true;
+}
+
+
+
 
 /*!
 * Load the model from .3ds file.
@@ -349,12 +410,13 @@ load_model(void) {
             char texname[1024];
             PlayerTexture *pt = (PlayerTexture*)calloc(sizeof(*pt),1);
             tex->user_ptr = pt;
-            strcpy(texname, datapath);
-            strcat(texname, "/");
-            strcat(texname, tex->name);
+            strcpy(texname, tex->name);
+           /* strcat(texname, "/");
+            strcat(texname, tex->name);*/
 
             printf("Loading %s\n", texname);
-            if (tga_load(texname, &pt->pixels, &pt->w, &pt->h)) {
+            //if (tga_load(texname, &pt->pixels, &pt->w, &pt->h)) {
+            if(readOpenCVTexture(texname, pt->pixels, pt->w, pt->h)){
                 glGenTextures(1, &pt->tex_id);
 
                 glBindTexture(GL_TEXTURE_2D, pt->tex_id);
@@ -649,7 +711,7 @@ display(void) {
     Lib3dsTargetNode *t;
     Lib3dsCameraNode *c;
     float fov, roll;
-    float near, far, dist;
+    float nearF, farF, distF;
     float *campos;
     float *tgt;
     float M[4][4];
@@ -695,8 +757,8 @@ display(void) {
         return;
     cam = file->cameras[camidx];
 
-    near = cam->near_range;
-    far = cam->far_range;
+    nearF = cam->near_range;
+    farF = cam->far_range;
 
     if (c == NULL || t == NULL) {
         if (c == NULL) {
@@ -719,7 +781,7 @@ display(void) {
     * further away.  A factor of 10 seems to make all the models I've
     * seen visible.
     */
-    if (near <= 0.) near = far * .001;
+    if (nearF <= 0.) nearF = farF * .001;
 
     gluPerspective(fov, 1.0*gl_width / gl_height, 1, 10000);
 
@@ -730,13 +792,13 @@ display(void) {
     /* User rotates the view about the target point */
 
     lib3ds_vector_sub(v, tgt, campos);
-    dist = lib3ds_vector_length(v);
+    distF = lib3ds_vector_length(v);
 
-    glTranslatef(0., dist, 0.);
+    glTranslatef(0., distF, 0.);
     glRotatef(view_rotx, 1., 0., 0.);
     glRotatef(view_roty, 0., 1., 0.);
     glRotatef(view_rotz, 0., 0., 1.);
-    glTranslatef(0., -dist, 0.);
+    glTranslatef(0., -distF, 0.);
 
     lib3ds_matrix_camera(M, campos, tgt, roll);
     glMultMatrixf(&M[0][0]);
